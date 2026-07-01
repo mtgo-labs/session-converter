@@ -4,4 +4,4 @@
 *.dylib
 *.test
 *.out
-tgconv
+/cmd/tgconv/tgconv
