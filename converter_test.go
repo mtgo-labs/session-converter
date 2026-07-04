@@ -3,6 +3,7 @@ package tgconv
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"testing"
 )
@@ -413,6 +414,50 @@ func TestTelethonAlwaysV1(t *testing.T) {
 		t.Errorf("auto-detected: got %s, want %s", detectedFmt, FormatTelethon)
 	}
 	assertAuthKeyEquals(t, s.AuthKey, autoDecoded.AuthKey)
+}
+
+// TestTelethonLegacyV2Decode verifies the decoder still accepts the legacy
+// "2"+api_id variant this library once emitted, even though the encoder now
+// only produces the standard "1" form. Existing (non-standard) strings stay
+// readable.
+func TestTelethonLegacyV2Decode(t *testing.T) {
+	s := makeTestSession() // ServerAddress 149.154.167.51, Port 443, AppID 2040
+
+	// Legacy "2" form: dc[1] + ip[4] + port[2 BE] + api_id[4 BE] + authkey[256].
+	buf := make([]byte, 0, 1+4+2+4+256)
+	buf = append(buf, byte(s.DCID))
+	buf = append(buf, 149, 154, 167, 51) // DC2 IPv4
+	buf = append(buf, byte(s.Port>>8), byte(s.Port))
+	apiIDBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(apiIDBuf, uint32(s.AppID))
+	buf = append(buf, apiIDBuf...)
+	buf = append(buf, s.AuthKey...)
+	encoded := "2" + base64.URLEncoding.EncodeToString(buf)
+
+	decoded, err := DecodeTelethon(encoded)
+	if err != nil {
+		t.Fatalf("decode legacy v2: %v", err)
+	}
+	if decoded.DCID != s.DCID {
+		t.Errorf("DCID: got %d, want %d", decoded.DCID, s.DCID)
+	}
+	if decoded.ServerAddress != s.ServerAddress {
+		t.Errorf("ServerAddress: got %s, want %s", decoded.ServerAddress, s.ServerAddress)
+	}
+	if decoded.Port != s.Port {
+		t.Errorf("Port: got %d, want %d", decoded.Port, s.Port)
+	}
+	if decoded.AppID != s.AppID {
+		t.Errorf("AppID: got %d, want %d", decoded.AppID, s.AppID)
+	}
+	assertAuthKeyEquals(t, s.AuthKey, decoded.AuthKey)
+
+	if f := DetectFormat(encoded); f != FormatTelethon {
+		t.Errorf("DetectFormat: got %s, want %s", f, FormatTelethon)
+	}
+	if _, fmt, err := Decode(encoded); err != nil || fmt != FormatTelethon {
+		t.Errorf("Decode auto-detect: fmt=%s err=%v", fmt, err)
+	}
 }
 
 // TestTelethonV1Prefix verifies that encoding without AppID produces v1.
