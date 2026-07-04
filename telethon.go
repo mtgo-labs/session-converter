@@ -9,10 +9,13 @@ import (
 
 // EncodeTelethon encodes a session in Telethon string format.
 //
-// Version 1 (legacy): "1" + base64url(dc[1] + ip[4|16] + port[2 BE] + authkey[256])
-// Version 2 (with api_id): "1" + base64url(dc[1] + ip[4|16] + port[2 BE] + api_id[4 BE] + authkey[256])
+// Telethon's StringSession has a single version (prefix "1") and stores only
+// what's needed to connect — it never serializes api_id:
 //
-// Uses v2 when AppID > 0.
+//	"1" + base64url(dc[1] + ip[4|16] + port[2 BE] + authkey[256])
+//
+// Mirrors Telethon v1 sessions/string.py (struct ">B{}sH256s", CURRENT_VERSION
+// = "1"). AppID is dropped from the wire format on purpose.
 func EncodeTelethon(s *Session) (string, error) {
 	if err := s.validate(); err != nil {
 		return "", err
@@ -30,7 +33,7 @@ func EncodeTelethon(s *Session) (string, error) {
 		ipBytes = ip.To16()
 	}
 
-	buf := make([]byte, 0, 1+len(ipBytes)+2+4+256)
+	buf := make([]byte, 0, 1+len(ipBytes)+2+256)
 	buf = append(buf, byte(s.DCID))
 	buf = append(buf, ipBytes...)
 
@@ -38,22 +41,14 @@ func EncodeTelethon(s *Session) (string, error) {
 	binary.BigEndian.PutUint16(portBuf, uint16(s.Port))
 	buf = append(buf, portBuf...)
 
-	// Version 2 includes api_id before the auth key; version 1 omits it.
-	// This matches Telethon's own StringSession format.
-	prefix := "1"
-	if s.AppID > 0 {
-		prefix = "2"
-		appIDBuf := make([]byte, 4)
-		binary.BigEndian.PutUint32(appIDBuf, uint32(s.AppID))
-		buf = append(buf, appIDBuf...)
-	}
-
 	buf = append(buf, s.AuthKey...)
 
-	return prefix + base64.URLEncoding.EncodeToString(buf), nil
+	return "1" + base64.URLEncoding.EncodeToString(buf), nil
 }
 
-// DecodeTelethon decodes a Telethon session string (both v1 and v2).
+// DecodeTelethon decodes a Telethon session string. Real Telethon uses a single
+// version (prefix "1"); a legacy "2" prefix with an embedded api_id (once
+// emitted by this library) is also tolerated.
 func DecodeTelethon(str string) (*Session, error) {
 	if len(str) < 2 || (str[0] != '1' && str[0] != '2') {
 		return nil, fmt.Errorf("not a Telethon session string")

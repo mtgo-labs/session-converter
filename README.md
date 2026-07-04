@@ -70,7 +70,7 @@ tgconv list
 
 | Format | Field | Encoding |
 |--------|-------|----------|
-| **Telethon** | dc, ip, port, [api_id], auth_key | `"1"` + base64url |
+| **Telethon** | dc, ip, port, auth_key | `"1"` + base64url |
 | **Pyrogram** | dc, api_id, test_mode, auth_key, user_id, is_bot | base64url (no prefix) |
 | **GramJS** | dc, addr_len, addr, port, auth_key | `"1"` + base64std |
 | **mtcute** | version, flags, dc_option (TL), user_id, is_bot, auth_key | base64url |

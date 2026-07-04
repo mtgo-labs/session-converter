@@ -377,38 +377,34 @@ func TestInvalidAuthKey(t *testing.T) {
 
 // --- Interop tests: verify compatibility with real-world session formats ---
 
-// TestTelethonV2Prefix verifies that encoding a session with AppID > 0
-// produces a Telethon v2 string (prefix "2"), and that v2 strings are
-// decodable and detectable. Real Telethon v2 uses prefix "2" when api_id
-// is included.
-func TestTelethonV2Prefix(t *testing.T) {
-	s := makeTestSession()
+// TestTelethonAlwaysV1 verifies that EncodeTelethon always emits the v1 prefix
+// ("1") and never embeds api_id in the wire format — matching real Telethon
+// (sessions/string.py, CURRENT_VERSION = "1", struct ">B{}sH256s"). AppID
+// therefore does not survive a Telethon round trip.
+func TestTelethonAlwaysV1(t *testing.T) {
+	s := makeTestSession() // AppID = 2040
+
 	encoded, err := EncodeTelethon(s)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
-
-	// Must use prefix "2" since AppID (2040) > 0.
-	if encoded[0] != '2' {
-		t.Fatalf("expected prefix '2' for v2 (AppID>0), got %q", string(encoded[0]))
+	if encoded[0] != '1' {
+		t.Fatalf("expected prefix '1', got %q", string(encoded[0]))
 	}
 
-	// Decode must accept "2" prefix.
 	decoded, err := DecodeTelethon(encoded)
 	if err != nil {
-		t.Fatalf("decode v2: %v", err)
+		t.Fatalf("decode: %v", err)
 	}
 	assertAuthKeyEquals(t, s.AuthKey, decoded.AuthKey)
-	if s.AppID != decoded.AppID {
-		t.Errorf("AppID: got %d, want %d", decoded.AppID, s.AppID)
+	if decoded.AppID != 0 {
+		t.Errorf("AppID: got %d, want 0 (api_id is not stored in Telethon strings)", decoded.AppID)
 	}
 
-	// DetectFormat must return Telethon for "2" prefix.
 	if f := DetectFormat(encoded); f != FormatTelethon {
 		t.Errorf("DetectFormat: got %s, want %s", f, FormatTelethon)
 	}
 
-	// Decode (auto-detect) must also work.
 	autoDecoded, detectedFmt, err := Decode(encoded)
 	if err != nil {
 		t.Fatalf("auto-decode: %v", err)
@@ -542,16 +538,17 @@ func TestTelethonV1Compat(t *testing.T) {
 	}
 }
 
-// TestCrossFormatWithV2Telethon verifies conversion chain works when
-// Telethon uses v2 prefix.
-func TestCrossFormatWithV2Telethon(t *testing.T) {
+// TestCrossFormatFromTelethon verifies that a Telethon string (built from a
+// session carrying AppID) converts to every other format with the auth key
+// preserved.
+func TestCrossFormatFromTelethon(t *testing.T) {
 	s := makeTestSession()
 	telethonStr, err := EncodeTelethon(s)
 	if err != nil {
 		t.Fatalf("encode telethon: %v", err)
 	}
-	if telethonStr[0] != '2' {
-		t.Fatalf("expected v2 prefix, got %q", string(telethonStr[0]))
+	if telethonStr[0] != '1' {
+		t.Fatalf("expected prefix '1', got %q", string(telethonStr[0]))
 	}
 
 	for _, target := range AllFormats {
