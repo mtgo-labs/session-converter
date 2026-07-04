@@ -56,10 +56,11 @@ func EncodeGotgproto(s *Session) (string, error) {
 		return "", fmt.Errorf("gotgproto: marshal inner: %w", err)
 	}
 
-	// Outer: gotgproto storage.Session.
+	// Outer: gotgproto storage.Session. Data is raw nested JSON, not
+	// base64 — json.RawMessage prevents []byte from being base64-encoded.
 	outer, err := json.Marshal(map[string]any{
 		"Version": 1,
-		"Data":    innerJSON, // []byte → base64 in JSON
+		"Data":    json.RawMessage(innerJSON),
 	})
 	if err != nil {
 		return "", fmt.Errorf("gotgproto: marshal outer: %w", err)
@@ -87,12 +88,15 @@ func DecodeGotgproto(str string) (*Session, error) {
 		return nil, fmt.Errorf("gotgproto: json unmarshal: %w", err)
 	}
 
-	// Try to extract the inner data. The current format has "Data" as a
-	// []byte (base64 of JSON). Older formats have direct fields.
+	// Try to extract the inner data. Supports multiple formats:
+	//   1. Data is a base64 string → decode → unwrap inner Version/Data.
+	//   2. Data is a raw JSON object with Version/Data envelope → unwrap.
+	//   3. Data is a raw JSON object with direct fields → use as-is.
+	//   4. Fields are directly in the outer JSON (very old format).
 	var dataMap map[string]json.RawMessage
 
 	if dataRaw, ok := outer["Data"]; ok {
-		// Data is []byte in Go JSON → base64-encoded JSON string.
+		// Case 1: Data is a base64-encoded JSON string.
 		var dataB64 string
 		if err := json.Unmarshal(dataRaw, &dataB64); err == nil {
 			innerBytes, err := base64.StdEncoding.DecodeString(dataB64)
@@ -113,14 +117,21 @@ func DecodeGotgproto(str string) (*Session, error) {
 				dataMap = innerWrapper
 			}
 		} else {
-			// Data might be a direct object (not base64 string).
-			if err := json.Unmarshal(dataRaw, &dataMap); err != nil {
-				// Fall back to using the outer map.
-				dataMap = outer
+			// Case 2/3: Data is a raw JSON object.
+			var innerWrapper map[string]json.RawMessage
+			if err := json.Unmarshal(dataRaw, &innerWrapper); err != nil {
+				dataMap = outer // Case 4: fall back to outer map.
+			} else if innerData, ok := innerWrapper["Data"]; ok {
+				// Case 2: unwrap the Version/Data envelope.
+				if err := json.Unmarshal(innerData, &dataMap); err != nil {
+					dataMap = innerWrapper
+				}
+			} else {
+				// Case 3: direct fields in Data object.
+				dataMap = innerWrapper
 			}
 		}
 	} else {
-		// Older format: fields are directly in the outer JSON.
 		dataMap = outer
 	}
 

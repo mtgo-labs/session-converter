@@ -38,7 +38,11 @@ func EncodeTelethon(s *Session) (string, error) {
 	binary.BigEndian.PutUint16(portBuf, uint16(s.Port))
 	buf = append(buf, portBuf...)
 
+	// Version 2 includes api_id before the auth key; version 1 omits it.
+	// This matches Telethon's own StringSession format.
+	prefix := "1"
 	if s.AppID > 0 {
+		prefix = "2"
 		appIDBuf := make([]byte, 4)
 		binary.BigEndian.PutUint32(appIDBuf, uint32(s.AppID))
 		buf = append(buf, appIDBuf...)
@@ -46,12 +50,12 @@ func EncodeTelethon(s *Session) (string, error) {
 
 	buf = append(buf, s.AuthKey...)
 
-	return "1" + base64.URLEncoding.EncodeToString(buf), nil
+	return prefix + base64.URLEncoding.EncodeToString(buf), nil
 }
 
 // DecodeTelethon decodes a Telethon session string (both v1 and v2).
 func DecodeTelethon(str string) (*Session, error) {
-	if len(str) < 2 || str[0] != '1' {
+	if len(str) < 2 || (str[0] != '1' && str[0] != '2') {
 		return nil, fmt.Errorf("not a Telethon session string")
 	}
 

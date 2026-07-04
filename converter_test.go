@@ -2,6 +2,8 @@ package tgconv
 
 import (
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"testing"
 )
 
@@ -331,6 +333,200 @@ func TestInvalidAuthKey(t *testing.T) {
 	_, err := EncodeTelethon(s)
 	if err == nil {
 		t.Error("expected error for short auth key")
+	}
+}
+
+// --- Interop tests: verify compatibility with real-world session formats ---
+
+// TestTelethonV2Prefix verifies that encoding a session with AppID > 0
+// produces a Telethon v2 string (prefix "2"), and that v2 strings are
+// decodable and detectable. Real Telethon v2 uses prefix "2" when api_id
+// is included.
+func TestTelethonV2Prefix(t *testing.T) {
+	s := makeTestSession()
+	encoded, err := EncodeTelethon(s)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	// Must use prefix "2" since AppID (2040) > 0.
+	if encoded[0] != '2' {
+		t.Fatalf("expected prefix '2' for v2 (AppID>0), got %q", string(encoded[0]))
+	}
+
+	// Decode must accept "2" prefix.
+	decoded, err := DecodeTelethon(encoded)
+	if err != nil {
+		t.Fatalf("decode v2: %v", err)
+	}
+	assertAuthKeyEquals(t, s.AuthKey, decoded.AuthKey)
+	if s.AppID != decoded.AppID {
+		t.Errorf("AppID: got %d, want %d", decoded.AppID, s.AppID)
+	}
+
+	// DetectFormat must return Telethon for "2" prefix.
+	if f := DetectFormat(encoded); f != FormatTelethon {
+		t.Errorf("DetectFormat: got %s, want %s", f, FormatTelethon)
+	}
+
+	// Decode (auto-detect) must also work.
+	autoDecoded, detectedFmt, err := Decode(encoded)
+	if err != nil {
+		t.Fatalf("auto-decode: %v", err)
+	}
+	if detectedFmt != FormatTelethon {
+		t.Errorf("auto-detected: got %s, want %s", detectedFmt, FormatTelethon)
+	}
+	assertAuthKeyEquals(t, s.AuthKey, autoDecoded.AuthKey)
+}
+
+// TestTelethonV1Prefix verifies that encoding without AppID produces v1.
+func TestTelethonV1Prefix(t *testing.T) {
+	s := makeTestSession()
+	s.AppID = 0
+	encoded, err := EncodeTelethon(s)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if encoded[0] != '1' {
+		t.Fatalf("expected prefix '1' for v1 (AppID=0), got %q", string(encoded[0]))
+	}
+	decoded, err := DecodeTelethon(encoded)
+	if err != nil {
+		t.Fatalf("decode v1: %v", err)
+	}
+	assertAuthKeyEquals(t, s.AuthKey, decoded.AuthKey)
+	if decoded.AppID != 0 {
+		t.Errorf("AppID: got %d, want 0", decoded.AppID)
+	}
+}
+
+// TestMtcuteDCVersion verifies the encoded DC option uses version 2
+// (matching real mtcute and mtgo).
+func TestMtcuteDCVersion(t *testing.T) {
+	s := makeTestSession()
+	encoded, err := EncodeMtcute(s)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatalf("base64 decode: %v", err)
+	}
+
+	// Skip version (1B) + flags (4B), then read DC option TL bytes.
+	off := 5
+	dcData, _, err := readTLBytes(payload, off)
+	if err != nil {
+		t.Fatalf("read DC option: %v", err)
+	}
+	if len(dcData) < 1 {
+		t.Fatalf("DC option too short")
+	}
+	if dcData[0] != 2 {
+		t.Errorf("DC option version: got %d, want 2", dcData[0])
+	}
+}
+
+// TestGotgprotoRawJSONData verifies the encoded outer Data field is raw
+// JSON (not a double-base64-encoded string). Real gotgproto stores Data
+// as a nested JSON object, not a base64 string.
+func TestGotgprotoRawJSONData(t *testing.T) {
+	s := makeTestSession()
+	encoded, err := EncodeGotgproto(s)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatalf("base64 decode: %v", err)
+	}
+
+	var outer map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &outer); err != nil {
+		t.Fatalf("unmarshal outer: %v", err)
+	}
+
+	dataRaw, ok := outer["Data"]
+	if !ok {
+		t.Fatal("missing Data field")
+	}
+
+	// Data must NOT be a string — it should be a JSON object.
+	var asStr string
+	if err := json.Unmarshal(dataRaw, &asStr); err == nil {
+		t.Fatalf("Data is a base64 string (double-encoded), expected raw JSON object")
+	}
+
+	// Data must parse as a JSON object with a Data envelope.
+	var innerWrapper map[string]json.RawMessage
+	if err := json.Unmarshal(dataRaw, &innerWrapper); err != nil {
+		t.Fatalf("Data is not a JSON object: %v", err)
+	}
+	if _, ok := innerWrapper["Data"]; !ok {
+		t.Fatal("inner Data envelope missing")
+	}
+
+	// Round-trip must still work.
+	decoded, err := DecodeGotgproto(encoded)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	assertAuthKeyEquals(t, s.AuthKey, decoded.AuthKey)
+}
+
+// TestTelethonV1Compat decodes a real Telethon v1 string (no api_id,
+// prefix "1") and verifies fields.
+func TestTelethonV1Compat(t *testing.T) {
+	// Build a Telethon v1 string manually: "1" + base64url(dc + ipv4 + port + authkey)
+	s := makeTestSession()
+	s.AppID = 0 // v1 has no api_id
+	encoded, err := EncodeTelethon(s)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	// Must be v1 (prefix "1", no api_id).
+	if encoded[0] != '1' {
+		t.Fatalf("expected prefix '1', got %q", string(encoded[0]))
+	}
+
+	payload, err := base64.URLEncoding.DecodeString(encoded[1:])
+	if err != nil {
+		t.Fatalf("base64 decode: %v", err)
+	}
+	// v1 IPv4: dc(1) + ip(4) + port(2) + authkey(256) = 263 bytes.
+	if len(payload) != 263 {
+		t.Errorf("v1 payload: got %d bytes, want 263", len(payload))
+	}
+}
+
+// TestCrossFormatWithV2Telethon verifies conversion chain works when
+// Telethon uses v2 prefix.
+func TestCrossFormatWithV2Telethon(t *testing.T) {
+	s := makeTestSession()
+	telethonStr, err := EncodeTelethon(s)
+	if err != nil {
+		t.Fatalf("encode telethon: %v", err)
+	}
+	if telethonStr[0] != '2' {
+		t.Fatalf("expected v2 prefix, got %q", string(telethonStr[0]))
+	}
+
+	for _, target := range AllFormats {
+		output, err := Convert(telethonStr, target)
+		if err != nil {
+			t.Errorf("convert telethon→%s: %v", target, err)
+			continue
+		}
+		decoded, _, err := Decode(output)
+		if err != nil {
+			t.Errorf("decode %s: %v", target, err)
+			continue
+		}
+		assertAuthKeyEqualsMsg(t, s.AuthKey, decoded.AuthKey, "telethon→"+string(target))
 	}
 }
 

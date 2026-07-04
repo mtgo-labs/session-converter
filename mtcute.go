@@ -9,8 +9,8 @@ import (
 // mtcute format constants.
 const (
 	mtcuteVersion  = 3 // session version byte
-	mtcuteDCVer    = 1 // DC option version byte
-	mtcuteDCVerAlt = 2 // alternate DC option version (some implementations)
+	mtcuteDCVer    = 2 // DC option version byte (current mtcute)
+	mtcuteDCVerAlt = 1 // legacy DC option version (older implementations)
 
 	mtcuteFlagHasSelf  uint32 = 1 << 0
 	mtcuteFlagTestMode uint32 = 1 << 1

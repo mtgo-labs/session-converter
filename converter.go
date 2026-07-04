@@ -99,10 +99,14 @@ func DetectFormat(str string) Format {
 		return FormatTelethon
 	}
 
-	// Pyrogram: base64url, decodes to exactly 271/351/356 bytes.
+	// Telethon v2: starts with "2" (includes api_id). Unambiguous.
+	if len(str) > 1 && str[0] == '2' {
+		return FormatTelethon
+	}
+
+	// Pyrogram: base64url, decodes to exactly 271 bytes.
 	if payload, err := tryB64URL(str); err == nil {
-		switch len(payload) {
-		case 271, 351, 356:
+		if len(payload) == 271 {
 			return FormatPyrogram
 		}
 	}

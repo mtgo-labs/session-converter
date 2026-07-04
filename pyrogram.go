@@ -46,87 +46,33 @@ func EncodePyrogram(s *Session) (string, error) {
 
 // DecodePyrogram decodes a Pyrogram session string.
 //
-// Supports the modern format (271 bytes) and legacy formats:
-//   - 351 bytes: dc[1] + test_mode[1] + authkey[256] + user_id[4 BE] + is_bot[1]
-//   - 356 bytes: dc[1] + test_mode[1] + authkey[256] + user_id[8 BE] + is_bot[1]
+// Format: base64url(dc[1] + api_id[4 BE] + test_mode[1] + authkey[256] + user_id[8 BE] + is_bot[1])
+// Total payload: 271 bytes. No version prefix, no legacy variants.
 func DecodePyrogram(str string) (*Session, error) {
 	payload, err := base64.URLEncoding.DecodeString(padBase64(str))
 	if err != nil {
 		return nil, fmt.Errorf("pyrogram: base64 decode: %w", err)
 	}
 
-	switch len(payload) {
-	case 271:
-		s, err := decodePyrogramModern(payload)
-		if err != nil {
-			return nil, err
-		}
-		s.fillDefaults()
-		return s, nil
-	case 351:
-		s, err := decodePyrogramLegacy(payload, 4)
-		if err != nil {
-			return nil, err
-		}
-		s.fillDefaults()
-		return s, nil
-	case 356:
-		s, err := decodePyrogramLegacy(payload, 8)
-		if err != nil {
-			return nil, err
-		}
-		s.fillDefaults()
-		return s, nil
-	default:
-		return nil, fmt.Errorf("pyrogram: unexpected payload length %d (expected 271, 351, or 356)", len(payload))
+	if len(payload) != 271 {
+		return nil, fmt.Errorf("pyrogram: unexpected payload length %d (expected 271)", len(payload))
 	}
-}
 
-func decodePyrogramModern(p []byte) (*Session, error) {
-	return &Session{
-		DCID:    int(p[0]),
-		AppID:   int32(binary.BigEndian.Uint32(p[1:5])),
-		TestMode: p[5] != 0,
-		AuthKey: bytesCopy(p[6:262]),
-		UserID:  int64(binary.BigEndian.Uint64(p[262:270])),
-		IsBot:   p[270] != 0,
-	}, nil
-}
-
-// decodePyrogramLegacy decodes old-format Pyrogram sessions that omit api_id.
-// uidSize is 4 (32-bit) or 8 (64-bit) user ID.
-func decodePyrogramLegacy(p []byte, uidSize int) (*Session, error) {
 	authKey := make([]byte, 256)
-	copy(authKey, p[2:258])
+	copy(authKey, payload[6:262])
 
-	var userID int64
-	if uidSize == 4 {
-		userID = int64(int32(binary.BigEndian.Uint32(p[258:262])))
-	} else {
-		userID = int64(binary.BigEndian.Uint64(p[258:266]))
-	}
-
-	isBotOff := 258 + uidSize
-	var isBot bool
-	if isBotOff < len(p) {
-		isBot = p[isBotOff] != 0
-	}
-
-	return &Session{
-		DCID:     int(p[0]),
-		TestMode: p[1] != 0,
+	s := &Session{
+		DCID:     int(payload[0]),
+		AppID:    int32(binary.BigEndian.Uint32(payload[1:5])),
+		TestMode: payload[5] != 0,
 		AuthKey:  authKey,
-		UserID:   userID,
-		IsBot:    isBot,
-	}, nil
+		UserID:   int64(binary.BigEndian.Uint64(payload[262:270])),
+		IsBot:    payload[270] != 0,
+	}
+	s.fillDefaults()
+	return s, nil
 }
 
-// bytesCopy returns a copy of b.
-func bytesCopy(b []byte) []byte {
-	out := make([]byte, len(b))
-	copy(out, b)
-	return out
-}
 
 // padBase64 adds padding to a base64 string.
 func padBase64(s string) string {
