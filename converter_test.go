@@ -110,6 +110,45 @@ func TestRoundTripGramJS(t *testing.T) {
 	}
 }
 
+// TestGramJSBinaryIPv4 verifies decoding a GramJS string whose server address
+// is stored as a 4-byte binary IPv4 (a variant some converters emit) yields a
+// dotted-quad address rather than garbage. Standard GramJS uses a string IP,
+// which is covered by TestRoundTripGramJS.
+func TestGramJSBinaryIPv4(t *testing.T) {
+	s := makeTestSession()
+	authKey := s.AuthKey
+
+	// Build: dc[1] + addrLen[2 BE]=4 + ipv4[4] + port[2 BE] + authkey[256].
+	buf := make([]byte, 0, 1+2+4+2+256)
+	buf = append(buf, byte(s.DCID))
+	buf = append(buf, 0x00, 0x04) // addrLen = 4
+	buf = append(buf, 149, 154, 167, 51) // DC2 IPv4 as binary
+	buf = append(buf, byte(s.Port>>8), byte(s.Port)) // port, big-endian
+	buf = append(buf, authKey...)
+
+	encoded := "1" + base64.StdEncoding.EncodeToString(buf)
+
+	decoded, err := DecodeGramJS(encoded)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if decoded.ServerAddress != "149.154.167.51" {
+		t.Errorf("ServerAddress: got %q, want 149.154.167.51", decoded.ServerAddress)
+	}
+	if decoded.Port != s.Port {
+		t.Errorf("Port: got %d, want %d", decoded.Port, s.Port)
+	}
+	if decoded.DCID != s.DCID {
+		t.Errorf("DCID: got %d, want %d", decoded.DCID, s.DCID)
+	}
+	assertAuthKeyEquals(t, authKey, decoded.AuthKey)
+
+	// Auto-detect must still classify it as GramJS.
+	if f := DetectFormat(encoded); f != FormatGramJS {
+		t.Errorf("DetectFormat: got %s, want %s", f, FormatGramJS)
+	}
+}
+
 func TestRoundTripMtcute(t *testing.T) {
 	s := makeTestSession()
 	encoded, err := EncodeMtcute(s)

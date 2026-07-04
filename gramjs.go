@@ -58,7 +58,16 @@ func DecodeGramJS(str string) (*Session, error) {
 		return nil, fmt.Errorf("gramjs: payload too short for address length %d", addrLen)
 	}
 
-	addr := string(payload[3 : 3+addrLen])
+	// Standard GramJS stores the server address as a UTF-8 string. Some
+	// converters/older variants store it as a 4-byte binary IPv4 instead —
+	// render that as dotted-quad rather than decoding the raw bytes as text.
+	addrBytes := payload[3 : 3+addrLen]
+	var addr string
+	if addrLen == 4 {
+		addr = fmt.Sprintf("%d.%d.%d.%d", addrBytes[0], addrBytes[1], addrBytes[2], addrBytes[3])
+	} else {
+		addr = string(addrBytes)
+	}
 	port := int(binary.BigEndian.Uint16(payload[3+addrLen : 3+addrLen+2]))
 	authKey := make([]byte, 256)
 	copy(authKey, payload[3+addrLen+2:])
