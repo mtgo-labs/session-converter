@@ -46,11 +46,10 @@ func EncodeTelethon(s *Session) (string, error) {
 	return "1" + base64.URLEncoding.EncodeToString(buf), nil
 }
 
-// DecodeTelethon decodes a Telethon session string. Real Telethon uses a single
-// version (prefix "1"); a legacy "2" prefix with an embedded api_id (once
-// emitted by this library) is also tolerated.
+// DecodeTelethon decodes a Telethon session string. Telethon has a single
+// version (prefix "1"), storing dc + ip + port + auth_key. No api_id.
 func DecodeTelethon(str string) (*Session, error) {
-	if len(str) < 2 || (str[0] != '1' && str[0] != '2') {
+	if len(str) < 2 || str[0] != '1' {
 		return nil, fmt.Errorf("not a Telethon session string")
 	}
 
@@ -73,11 +72,8 @@ func DecodeTelethon(str string) (*Session, error) {
 	// IP: 4 bytes (IPv4) or 16 bytes (IPv6). Determine by payload length.
 	var ipLen int
 	remaining := len(payload) - off
-	// v2 has 4 extra bytes for api_id before authkey. Try both.
 	for _, candidate := range []int{4, 16} {
-		// Check if remaining matches: ipLen + port(2) + [api_id(4)] + authkey(256)
-		base := candidate + 2 + 256
-		if remaining == base || remaining == base+4 {
+		if remaining == candidate+2+256 {
 			ipLen = candidate
 			break
 		}
@@ -100,12 +96,6 @@ func DecodeTelethon(str string) (*Session, error) {
 	port := int(binary.BigEndian.Uint16(payload[off : off+2]))
 	off += 2
 
-	var appID int32
-	// Check for v2 api_id (4 bytes before authkey).
-	if len(payload)-off == 256+4 {
-		appID = int32(binary.BigEndian.Uint32(payload[off : off+4]))
-		off += 4
-	}
 
 	if off+256 > len(payload) {
 		return nil, fmt.Errorf("telethon: auth_key out of range")
@@ -118,6 +108,5 @@ func DecodeTelethon(str string) (*Session, error) {
 		ServerAddress: serverAddr,
 		Port:          port,
 		AuthKey:       authKey,
-		AppID:         appID,
 	}, nil
 }
