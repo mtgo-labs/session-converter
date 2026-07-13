@@ -3,11 +3,11 @@ module github.com/mtgo-labs/session-converter
 go 1.26.2
 
 require (
-	github.com/mtgo-labs/mtgo v0.13.0
+	github.com/mtgo-labs/mtgo v0.14.0
 	modernc.org/sqlite v1.38.2
 )
 
-require golang.org/x/term v0.44.0 // indirect
+require golang.org/x/term v0.45.0 // indirect
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -17,10 +17,10 @@ require (
 	github.com/mtgo-labs/storage v0.5.0 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	modernc.org/libc v1.66.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
