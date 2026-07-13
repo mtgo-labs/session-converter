@@ -3,7 +3,7 @@ module github.com/mtgo-labs/session-converter
 go 1.26.2
 
 require (
-	github.com/mtgo-labs/mtgo v0.14.0
+	github.com/mtgo-labs/mtgo v0.14.1
 	modernc.org/sqlite v1.38.2
 )
 
