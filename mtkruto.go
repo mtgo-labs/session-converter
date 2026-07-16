@@ -116,7 +116,7 @@ func DecodeMTKruto(str string) (*Session, error) {
 		session.UserID = int64(binary.LittleEndian.Uint64(data[off : off+8]))
 	}
 
-	session.fillDefaults()
+	session.FillDefaults()
 
 	return &session, nil
 }

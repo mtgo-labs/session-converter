@@ -185,7 +185,7 @@ func DecodeGotgproto(str string) (*Session, error) {
 		json.Unmarshal(v, &s.UserID)
 	}
 
-	s.fillDefaults()
+	s.FillDefaults()
 	if s.AuthKey == nil || len(s.AuthKey) != 256 {
 		return nil, fmt.Errorf("gotgproto: auth_key must be 256 bytes, got %d", len(s.AuthKey))
 	}

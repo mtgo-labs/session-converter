@@ -84,7 +84,7 @@ func decodeGogramModern(str string) (*Session, error) {
 		ServerAddress: gs.IpAddr,
 		AppID:         gs.AppID,
 	}
-	s.fillDefaults()
+	s.FillDefaults()
 	return s, nil
 }
 
@@ -124,6 +124,6 @@ func decodeGogramLegacy(str string) (*Session, error) {
 		DCID:          dcID,
 		AppID:         int32(appID),
 	}
-	s.fillDefaults()
+	s.FillDefaults()
 	return s, nil
 }

@@ -27,9 +27,10 @@ func dcAddr(dcID int) string {
 	return dcAddresses[dcID]
 }
 
-// fillDefaults populates ServerAddress and Port from DC defaults if they are
-// zero. This is called after decoding formats that omit these fields.
-func (s *Session) fillDefaults() {
+// FillDefaults populates ServerAddress and Port from DC defaults if they are
+// zero. This is called after decoding formats that omit these fields, and
+// should be called after constructing a Session manually (e.g., from SQLite).
+func (s *Session) FillDefaults() {
 	if s.ServerAddress == "" {
 		if addr := dcAddr(s.DCID); addr != "" {
 			s.ServerAddress = addr

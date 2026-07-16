@@ -69,7 +69,7 @@ func DecodePyrogram(str string) (*Session, error) {
 		UserID:   int64(binary.BigEndian.Uint64(payload[262:270])),
 		IsBot:    payload[270] != 0,
 	}
-	s.fillDefaults()
+	s.FillDefaults()
 	return s, nil
 }
 
